@@ -1,0 +1,17 @@
+---
+detect:
+  lane:
+    white:
+      hue_l: 0
+      hue_h: 111
+      saturation_l: 0
+      saturation_h: 38
+      lightness_l: 126
+      lightness_h: 255
+    yellow:
+      hue_l: 27
+      hue_h: 37
+      saturation_l: 58
+      saturation_h: 222
+      lightness_l: 80
+      lightness_h: 255

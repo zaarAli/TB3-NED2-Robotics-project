@@ -1,0 +1,92 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import rospy
+import numpy as np
+from std_msgs.msg import Float64, Bool  # Import Bool message type
+from geometry_msgs.msg import Twist
+from pyniryo import *
+import sys
+import time
+
+class ControlLane():
+    def __init__(self):
+        self.sub_lane = rospy.Subscriber('/control/lane', Float64, self.cbFollowLane, queue_size=1)
+        self.sub_max_vel = rospy.Subscriber('/control/max_vel', Float64, self.cbGetMaxVel, queue_size=1)
+        self.pub_cmd_vel = rospy.Publisher('/control/cmd_vel', Twist, queue_size=1)
+        self.sub_aruco_distance = rospy.Subscriber('/aruco_distance', Float64, self.arucoCallBack, queue_size=1)
+        self.pub_robot_status = rospy.Publisher('/robot_status', Bool, queue_size=1)  # New publisher for robot status
+
+        self.lastError = 0
+        self.MAX_VEL = 0.1
+        self.stopped = False
+
+        rospy.on_shutdown(self.fnShutDown)
+
+    def cbGetMaxVel(self, max_vel_msg):
+        self.MAX_VEL = max_vel_msg.data
+
+    def arucoCallBack(self, msg):
+        distance_to_tag = msg.data
+        if msg.data < 0.45 and not self.stopped:
+            self.stopped = True
+            self.pub_robot_status.publish(Bool(data=True))  # Publish that the robot has stopped
+
+    def cbFollowLane(self, desired_center):
+        if not self.stopped:
+            center = desired_center.data
+
+            error = center - 500
+
+            Kp = 0.0025
+            Kd = 0.007
+
+            angular_z = Kp * error + Kd * (error - self.lastError)
+            self.lastError = error
+
+            twist = Twist()
+            twist.linear.x = min(self.MAX_VEL * ((1 - abs(error) / 500) ** 2.2), 0.05)
+            twist.linear.y = 0
+            twist.linear.z = 0
+            twist.angular.x = 0
+            twist.angular.y = 0
+            twist.angular.z = -max(angular_z, -2.0) if angular_z < 0 else -min(angular_z, 2.0)
+            self.pub_cmd_vel.publish(twist)
+        else:
+            print("stopped")
+            robot = NiryoRobot("192.168.0.101")
+            robot.calibrate_auto()
+
+            try:
+                robot.move_pose(*[0.001, -0.213, 0.217, 3.1, 1.395, 1.559])
+                if robot.vision_pick('default_workspace_turltelbot', 0/1000.0, ObjectShape.CIRCLE, ObjectColor.ANY)[0]:
+                    robot.place_from_pose(*[0.326, -0.015, 0.314, -2.232, 1.471, -2.234])
+                robot.move_pose(*[0.326, -0.015, 0.364, -2.175, 1.476, -2.178])
+                robot.move_pose(*[0, -0.284, 0.325, 2.928, 1.346, 1.383])
+
+            except NiryoRosWrapperException as e:
+                sys.stderr.write(str(e))
+
+            robot.close_connection()
+            self.stopped = False
+            self.pub_robot_status.publish(Bool(data=False))  # Publish that the robot has resumed
+
+    def fnShutDown(self):
+        rospy.loginfo("Shutting down. cmd_vel will be 0")
+        twist = Twist()
+        twist.linear.x = 0
+        twist.linear.y = 0
+        twist.linear.z = 0
+        twist.angular.x = 0
+        twist.angular.y = 0
+        twist.angular.z = 0
+        self.pub_cmd_vel.publish(twist)
+
+    def main(self):
+        rospy.spin()
+
+if __name__ == '__main__':
+    rospy.init_node('control_lane')
+    node = ControlLane()
+    node.main()
+
