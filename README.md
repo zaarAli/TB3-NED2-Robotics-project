@@ -453,11 +453,11 @@ $$ \begin{bmatrix} u \\\ v \\\ 1 \end{bmatrix} = K \begin{bmatrix} R & t \end{bm
 
 The camera matrix $K$ is decomposed into the intrinsic matrix:
 
-$K = \begin{bmatrix} f_x & 0 & c_x \\\ 0 & f_y & c_y \\\ 0 & 0 & 1 \end{bmatrix}$
+$$K = \begin{bmatrix} f_x & 0 & c_x \\\ 0 & f_y & c_y \\\ 0 & 0 & 1 \end{bmatrix} $$
 
 ### 2.9.3. Homogeneous Coordinates
 
-Use homogeneous coordinates for simplification: $$ P' = (X, Y, Z, 1)$$
+Use homogeneous coordinates for simplification: $ P' = (X, Y, Z, 1)$
 
 ### 2.9.4. Distance Calculation
 
