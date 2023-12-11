@@ -1,3 +1,5 @@
+# Robotics Project
+
 * Authors: 
     1. Khizar Zaar
     2. Ali Haidar Ahmad
@@ -6,6 +8,8 @@
     1. Dr Jouquin
     2. Ralph
 
+
+- [Robotics Project](#robotics-project)
 - [1. Introduction](#1-introduction)
   - [1.1. Objective](#11-objective)
 - [2. Methodology](#2-methodology)
@@ -63,8 +67,9 @@
     - [3.4.2. Aruco marker Pose Estimation](#342-aruco-marker-pose-estimation)
     - [3.4.3. Distance between the Aruco marker and TB3](#343-distance-between-the-aruco-marker-and-tb3)
   - [3.5. Lane Detection](#35-lane-detection)
-  - [Controller](#controller)
-  - [3.6. Difficulties](#36-difficulties)
+  - [3.6. Controller](#36-controller)
+  - [3.7. NED 2 pick and place](#37-ned-2-pick-and-place)
+  - [3.8. Project Integration and Workflow Overview](#38-project-integration-and-workflow-overview)
 - [4. Results](#4-results)
   - [4.1. Camera Calibration](#41-camera-calibration)
   - [4.2. Lane detection](#42-lane-detection)
@@ -743,7 +748,7 @@ roslaunch turtlebot3_autorace_detect detect_lane.launch mode:=action
 ```
 Now we can run the controller to move the robot.
 
-## Controller
+## 3.6. Controller
 
 The controller serves as the orchestrator of the robot's movements, incorporating logic to halt the robot when meeting the specified distance criteria from the Aruco marker. This strategic intervention is essential for enabling the Niryo NED 2 to execute the object pick-and-place task atop the TB3. Following the successful completion of the pick-and-place operation by the NED 2, the TB3 resumes its movement. 
 
@@ -772,9 +777,82 @@ rospy.loginfo("Aruco detection resumed.")
 ```
 The code above shows the Aruco detector package where we are stopping the detection of the aruco marker for a fixed amount of time.
 
-## 3.6. Difficulties
+## 3.7. NED 2 pick and place
+
+
+The initial step involves connecting to the Niryo NED 2 robot using SSH:
+
+```bash
+ssh niryo@192.168.0.101
+```
+
+After establishing the connection, the robot is brought up by launching the Niryo Robot Bringup package:
+
+```bash
+roslaunch niryo_robot_bringup niryo_ned_robot.launch
+```
+Following this, Niryo Studio is launched to connect to the robot and initiate the [calibration](https://docs.niryo.com/product/ned/v3.1.1/en/source/software/niryo_studio.html) process. The calibration ensures accurate robot movements for subsequent actions. Once calibrated, actions with the robot can be performed.
+
+For the pick-and-place operation, the Niryo Studio is utilized to generate the code, which is then imported as a Python file. Key considerations for the pick-and-place process include the initial robot position, the detection position for the object, a description of the object, and the final placement position.
+
+The provided Python code demonstrates the implementation of the pick-and-place sequence. It utilizes the NiryoRobot Python library to control the robot, encompassing steps such as automatic calibration, movement to an observation position, and a vision-based pick operation targeting a specified object. Exception handling is incorporated to manage potential errors, and the robot connection is gracefully closed upon completing the operation.
+
+```python
+# Python Code for Niryo NED 2 Pick and Place
+robot = NiryoRobot("192.168.0.101")
+try:
+    robot.calibrate_auto()
+    robot.move_pose(*[0.001, -0.213, 0.217, 3.1, 1.395, 1.559])
+    
+    if robot.vision_pick('default_workspace_turltelbot', 0/1000.0, ObjectShape.CIRCLE, ObjectColor.RED)[0]:
+        robot.place_from_pose(*[0.326, -0.015, 0.314, -2.232, 1.471, -2.234])
+        robot.move_pose(*[0.326, -0.015, 0.364, -2.175, 1.476, -2.178])
+        robot.move_pose(*[0, -0.284, 0.325, 2.928, 1.346, 1.383])
+
+except NiryoRosWrapperException as e:
+    rospy.logerr(str(e))
+
+robot.close_connection()
+```
+This comprehensive approach leverages the capabilities of the NiryoRobot library to seamlessly control the Niryo NED 2 robot for intricate pick-and-place tasks.
+
+## 3.8. Project Integration and Workflow Overview
+
+Ensuring seamless integration is paramount in a project involving diverse modules and machines. The utilization of the Robot Operating System (ROS) significantly facilitated this integration process.
+
+The comprehensive workflow of the entire project unfolds as follows:
+
+1. **ROS Master on the Host PC:**
+   - The central ROS master operates on the host PC, overseeing the coordination of various modules.
+
+2. **Image Acquisition from TB3:**
+   - Images are acquired from the TurtleBot3 (TB3) and transmitted to the host PC for further processing.
+
+3. **Host PC Processing:**
+   - The host PC conducts calibration and undistortion of the images, rendering them suitable for diverse computer vision tasks.
+
+4. **Undistorted Image Processing:**
+   - The undistorted image undergoes processing by two key packages:
+      1. *Aruco Marker Detector Package:* Detects Aruco markers, estimates their pose, and calculates distances. The distance information is published for the controller package.
+      2. *Lane Detection Package:* Identifies yellow and white lanes, creates a mask, and publishes the mask for the controller package.
+
+5. **Controller Package Operation:**
+   - The controller package subscribes to the distance and lane mask topics. The lane mask guides the robot to stay within the lanes, while the Aruco marker's distance is crucial for stopping at an optimal distance from the NED 2. Upon meeting the stopping criteria, the controller halts TB3 movement, communicates with NED 2 for pick-and-place commands, and signals the Aruco marker detector package to pause detection for a set duration. After NED 2 completes the pick and place, the controller resumes TB3 movement based on detected lane masks.
+
+6. **Resumption of Aruco Marker Detection:**
+   - Following the specified pause duration, the Aruco marker detector resumes detection.
+
+7. **Looped Operation:**
+   - Steps 5 to 8 operate in a continuous loop without requiring human intervention.
+
+This systematic integration and workflow, facilitated by ROS, ensure the coordinated and autonomous functioning of the robotic system.
+
+![Alt text](Images/workflow.jpg)
 
 # 4. Results
+
+The following section demonstrate the results of our project.
+
 ## 4.1. Camera Calibration
 ![alt text](<Images/intrinsic%20calibration.gif>)
 
@@ -809,4 +887,13 @@ This visualization illustrates that, concurrently with the robot's lane detectio
 
 # 5. Future work
 
+We propose the following future work:
+
+1. Implement our own lane detection algorithm.
+2. Use a better camera.
+3. Use multiple NED 2 robots around the circuit to simulate a warehouse setup.
+4. Implement a robust method to avoid detecting the Aruco Marker after pick and place.
+
+
 # 6. Conclusion
+The project's conclusion reveals a seamlessly orchestrated workflow powered by the Robot Operating System (ROS). Starting with a ROS master on the host PC, the project encompasses image acquisition from TurtleBot3 (TB3), subsequent host PC processing involving calibration and undistortion for computer vision tasks. Undistorted images undergo processing by the Aruco Marker Detector and Lane Detection packages. The Controller Package subscribes to distance and lane mask topics, guiding the TB3 within lanes and halting at optimal distances from NED 2. The Controller communicates with NED 2 for pick-and-place, signaling a pause in Aruco marker detection. Post-pause, Aruco marker detection resumes, creating a continuous loop of autonomous operation. This systematic integration ensures precise and coordinated robotic functioning through ROS.
